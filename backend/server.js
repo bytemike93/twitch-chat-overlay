@@ -6,7 +6,6 @@ const tmi = require('tmi.js');
 const fs = require('fs');
 const path = require('path');
 const compression = require('compression');
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 const CLIENT_ID = config.client_id;
 const app = express();
@@ -19,103 +18,189 @@ function getToken() {
     return token;
 }
 
-// Compression-Middleware
-app.use(compression());
+// Cache-Konfiguration
+const CACHE_TTL = 15 * 60 * 1000;
+const badgeCache = { global: null, channels: {} };
+const sevenTvEmoteCache = { global: null, channels: {} };
+const sevenTvStyleCache = { users: {} };
 
+// Middleware
+app.use(compression());
+const USE_LOCAL_FRONTEND = false; // ← auf false setzen für Live-Server
+
+if (USE_LOCAL_FRONTEND) {
+    app.use(express.static(path.join(__dirname, '../frontend')));
+}
+
+// HTTP-Server & WebSocket-Server
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-
-// STAGING
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-app.get('/', (req, res) => res.send('Backend läuft'));
 server.listen(port, () => console.log(`Backend läuft auf Port ${port}`));
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Unhandled Promise Rejection]', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('[Uncaught Exception]', err);
+});
 
+// State
 const twitchClients = new Map();
 const channelSubscribers = new Map();
-const badgeCache = { global: null, channels: {} };
-const sevenTvCache = { global: null, channels: {}, users: {} };
-const CACHE_TTL = 15 * 60 * 1000;
 
+// Helper: Broadcast
+function broadcastToOverlay(channel, data) {
+    const streamer = channel.replace(/^#/, '').toLowerCase();
+    const clients = channelSubscribers.get(streamer);
+    if (!clients) return;
+    clients.forEach(ws => {
+        try {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(data));
+            }
+        } catch (e) {
+            console.warn('[WebSocket Send Fehler]', e);
+        }
+    });
+}
+
+// Fetch-Twitch-Badges
+async function fetchBadges(url) {
+    try {
+        const res = await fetch(url, {
+            headers: { 'Client-Id': CLIENT_ID, 'Authorization': `Bearer ${getToken()}` }
+        });
+        const data = await res.json();
+        return data.data ?? [];
+    } catch (err) {
+        console.warn('[Badge API Fehler]', err);
+        return [];
+    }
+}
+
+// Nachrichtenevents
 wss.on('connection', ws => {
-    console.log('Client verbunden');
-
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
 
     ws.on('message', async msg => {
-        const parsed = JSON.parse(msg);
+        let parsed;
+        try {
+            parsed = JSON.parse(msg);
+        } catch {
+            return;
+        }
         if (!parsed.streamerName) return;
 
         const streamer = parsed.streamerName.toLowerCase();
-        if (!channelSubscribers.has(streamer)) channelSubscribers.set(streamer, new Set());
+        if (!channelSubscribers.has(streamer)) {
+            channelSubscribers.set(streamer, new Set());
+        }
         channelSubscribers.get(streamer).add(ws);
 
         if (!twitchClients.has(streamer)) {
             const client = new tmi.Client({
                 options: { debug: false },
                 connection: { secure: true, reconnect: true },
-                identity: { username: 'justinfan12345', password: 'password' },
+                identity: { username: 'justinfan12345', password: `oauth:${token}` },
                 clientId: CLIENT_ID
             });
 
             twitchClients.set(streamer, client);
             client.connect().then(() => client.join(streamer));
 
-            client.on('timeout', (channel, username) => {
-                broadcastToOverlay(channel, { type: 'clear_user_messages', username: username.toLowerCase() });
-            });
-            client.on('ban', (channel, username) => {
-                broadcastToOverlay(channel, { type: 'clear_user_messages', username: username.toLowerCase() });
+            ['timeout','ban'].forEach(evt => {
+                client.on(evt, (channel, username) => {
+                    broadcastToOverlay(channel, { type: 'clear_user_messages', username: username.toLowerCase() });
+                });
             });
 
             client.on('message', async (channel, tags, text, self) => {
                 if (self) return;
-                const lowerChannel = channel.slice(1).toLowerCase();
-                const subscribers = channelSubscribers.get(lowerChannel);
-                if (!subscribers) return;
+                const lowerCh = channel.slice(1).toLowerCase();
+                const subs = channelSubscribers.get(lowerCh);
+                if (!subs) return;
 
-                const token = getToken();
-                if (!token) return;
-
+                // Profilbild
                 let profileImageUrl = null;
                 if (tags['user-id']) {
-                    const userRes = await fetch(`https://api.twitch.tv/helix/users?id=${tags['user-id']}`, {
-                        headers: { 'Client-Id': CLIENT_ID, 'Authorization': `Bearer ${token}` }
-                    });
-                    const userData = await userRes.json();
-                    profileImageUrl = userData.data?.[0]?.profile_image_url ?? null;
+                    try {
+                        const userRes = await fetch(
+                            `https://api.twitch.tv/helix/users?id=${tags['user-id']}`,
+                            { headers: { 'Client-Id': CLIENT_ID, 'Authorization': `Bearer ${getToken()}` } }
+                        );
+                        const userData = await userRes.json();
+                        profileImageUrl = userData.data?.[0]?.profile_image_url ?? null;
+                    } catch (err) {
+                        console.warn('[Twitch User API Fehler]', err);
+                    }
                 }
 
+                // Badges
                 const broadcasterId = tags['room-id'];
-                const [globalBadges, channelBadges] = await Promise.all([
-                    badgeCache.global ?? fetchBadges('https://api.twitch.tv/helix/chat/badges/global', token),
-                                                                        fetchBadges(`https://api.twitch.tv/helix/chat/badges?broadcaster_id=${broadcasterId}`, token)
-                ]);
-                badgeCache.global = globalBadges;
-                badgeCache.channels[broadcasterId] = channelBadges;
-
+                let globalBadges = badgeCache.global;
+                let channelBadges = badgeCache.channels[broadcasterId];
+                if (!globalBadges || !channelBadges) {
+                    try {
+                        [globalBadges, channelBadges] = await Promise.all([
+                            globalBadges ?? fetchBadges('https://api.twitch.tv/helix/chat/badges/global'),
+                                                                          channelBadges ?? fetchBadges(
+                                                                              `https://api.twitch.tv/helix/chat/badges?broadcaster_id=${broadcasterId}`
+                                                                          )
+                        ]);
+                        badgeCache.global = globalBadges;
+                        badgeCache.channels[broadcasterId] = channelBadges;
+                    } catch (e) {
+                        console.warn('[Twitch Badges Fehler]', e);
+                    }
+                }
                 const badgeUrls = parseBadges(tags['badges-raw'], globalBadges, channelBadges);
 
-                const sevenTvStyle = await fetchSevenTvStyle(tags['user-id']);
-                if (sevenTvStyle?.badge) badgeUrls.push(sevenTvStyle.badge);
+                // 7TV Style
+                let sevenStyle = null;
+                try {
+                    sevenStyle = await fetchSevenTvStyle(tags['user-id']);
+                } catch (e) {
+                    console.warn('[7TV Style Error]', e);
+                }
+                if (sevenStyle?.badge) badgeUrls.push(sevenStyle.badge);
 
-                const sevenTvChannelEmotes = await fetchSevenTvEmotes(tags['room-id']);
-                const sevenTvGlobalEmotes = await fetchSevenTvGlobalEmotes();
-                const sevenTvEmotes = parseSevenTvEmotes([...sevenTvChannelEmotes, ...sevenTvGlobalEmotes], text);
+                // 7TV Emotes
+                let chanEmotes = [];
+                let globEmotes = [];
+                try {
+                    chanEmotes = await fetchSevenTvEmotes(tags['room-id']);
+                    globEmotes = await fetchSevenTvGlobalEmotes();
+                } catch (e) {
+                    console.warn('[7TV Emotes Error]', e);
+                }
+                const sevenEmotes = parseSevenTvEmotes([...chanEmotes, ...globEmotes], text);
 
-                const twitchEmotes = parseTwitchEmotes(tags.emotes, text);
+                // Twitch Emotes
+                const twEmotes = parseTwitchEmotes(tags.emotes, text);
 
+                // Nachricht-Daten
                 const msgData = {
-                    type: 'chat', username: tags.username,
-                    displayName: tags['display-name'], message: text,
-                    badges: badgeUrls, profileImageUrl,
-                    twitchEmotes, sevenTvEmotes,
-                    sevenTvColor: sevenTvStyle?.color ?? tags.color ?? null,
-                    sevenTvPaint: sevenTvStyle?.paint ?? null
+                    type: 'chat',
+                    username: tags.username,
+                    displayName: tags['display-name'],
+                    message: text,
+                    badges: badgeUrls,
+                    profileImageUrl,
+                    twitchEmotes: twEmotes,
+                    sevenTvEmotes: sevenEmotes,
+                    sevenTvColor: sevenStyle?.color ?? tags.color ?? null,
+                    sevenTvPaint: sevenStyle?.paint ?? null
                 };
 
-                subscribers.forEach(s => s.readyState === WebSocket.OPEN && s.send(JSON.stringify(msgData)));
+                subs.forEach(s => {
+                    try {
+                        if (s.readyState === WebSocket.OPEN) {
+                            s.send(JSON.stringify(msgData));
+                        }
+                    } catch (err) {
+                        console.warn('[WebSocket Send Fehler]', err);
+                    }
+                });
             });
         }
     });
@@ -131,171 +216,177 @@ wss.on('connection', ws => {
     });
 });
 
+// Heartbeat
 const interval = setInterval(() => {
     wss.clients.forEach(ws => {
-        if (ws.isAlive === false) return ws.terminate();
+        if (!ws.isAlive) return ws.terminate();
         ws.isAlive = false;
         ws.ping();
     });
 }, 30000);
 wss.on('close', () => clearInterval(interval));
 
-function broadcastToOverlay(channel, data) {
-    const streamer = channel.replace(/^#/, '').toLowerCase();
-    const clients = channelSubscribers.get(streamer);
-    if (!clients) return;
-    clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(data));
-    });
-}
+// Hilfsfunktionen und Caches
 
-async function fetchBadges(url, token) {
-    try {
-        const res = await fetch(url, { headers: { 'Client-Id': CLIENT_ID, 'Authorization': `Bearer ${token}` } });
-        const data = await res.json();
-        return data.data ?? [];
-    } catch {
-        return [];
-    }
-}
-
-function parseBadges(raw, globalBadges, channelBadges) {
+function parseBadges(raw, globalSets, channelSets) {
     const badges = [];
     (raw?.split(',') ?? []).forEach(b => {
         const [name, version] = b.split('/');
-        const findBadge = (sets) => sets.find(set => set.set_id === name)?.versions.find(v => v.id === version)?.image_url_1x;
-        badges.push(findBadge(globalBadges) || findBadge(channelBadges));
+        const find = sets => sets
+        .find(s => s.set_id === name)
+        ?.versions.find(v => v.id === version)
+        ?.image_url_1x;
+        badges.push(find(globalSets) || find(channelSets));
     });
     return badges.filter(Boolean);
 }
 
 function parseTwitchEmotes(emotes, text) {
-    const emoteArray = [];
-    Object.entries(emotes || {}).forEach(([emoteId, positions]) => {
-        const emoteUrl = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/3.0`;
-        positions.forEach(position => {
-            const [start, end] = position.split('-');
-            emoteArray.push({ code: text.substring(+start, +end + 1), url: emoteUrl, start: +start, end: +end });
+    const arr = [];
+    Object.entries(emotes || {}).forEach(([id, posList]) => {
+        const url = `https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/dark/3.0`;
+        posList.forEach(p => {
+            const [s, e] = p.split('-').map(Number);
+            arr.push({ code: text.slice(s, e+1), url, start: s, end: e });
         });
     });
-    return emoteArray.sort((a, b) => a.start - b.start);
+    return arr.sort((a, b) => a.start - b.start);
 }
 
+// 7TV Emotes
 async function fetchSevenTvEmotes(channelId) {
-    const res = await fetch(`https://7tv.io/v3/users/twitch/${channelId}`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.emote_set?.emotes.map(e => ({ code: e.name, url: `https:${e.data.host.url}/3x.webp` })) || [];
+    try {
+        const cache = sevenTvEmoteCache.channels[channelId];
+        if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
+            return cache.data;
+        }
+
+        const res = await fetch(`https://7tv.io/v3/users/twitch/${channelId}`);
+        if (res.status === 404) {
+            return []; // kein Account bei 7TV → normal
+        }
+        if (!res.ok) {
+            throw new Error(`7TV v3 API returned ${res.status}`);
+        }
+
+        const data = await res.json();
+        const emotes = data.emote_set?.emotes.map(e => ({
+            code: e.name,
+            url: `https:${e.data.host.url}/3x.webp`
+        })) || [];
+
+        sevenTvEmoteCache.channels[channelId] = { data: emotes, fetchedAt: Date.now() };
+        return emotes;
+    } catch (err) {
+        console.warn('[fetchSevenTvEmotes Fehler]', err);
+        return [];
+    }
 }
 
 async function fetchSevenTvGlobalEmotes() {
-    const res = await fetch(`https://7tv.io/v3/emote-sets/global`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.emotes.map(e => ({ code: e.name, url: `https:${e.data.host.url}/3x.webp` }));
+    try {
+        const cache = sevenTvEmoteCache.global;
+        if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
+            return cache.data;
+        }
+
+        const res = await fetch('https://7tv.io/v3/emote-sets/global');
+        if (!res.ok) throw new Error(`7TV Global API returned ${res.status}`);
+
+        const data = await res.json();
+        const emotes = data.emotes.map(e => ({
+            code: e.name,
+            url: `https:${e.data.host.url}/3x.webp`
+        }));
+
+        sevenTvEmoteCache.global = { data: emotes, fetchedAt: Date.now() };
+        return emotes;
+    } catch (err) {
+        console.warn('[fetchSevenTvGlobalEmotes Fehler]', err);
+        return [];
+    }
 }
 
 function parseSevenTvEmotes(emotes, text) {
     const found = [];
     const taken = new Set();
-
-    // Längere Emotes zuerst prüfen
     emotes.sort((a, b) => b.code.length - a.code.length);
-
-    emotes.forEach(emote => {
-        const escapedCode = escapeRegExp(emote.code);
-        const regex = new RegExp(`(?<!\\S)${escapedCode}(?!\\S)`, 'g'); // Nur ganze Wörter (zwischen Leerzeichen o.ä.)
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-        const start = match.index;
-        const end = start + emote.code.length - 1;
-
-        // Wenn schon belegt → überspringen
-        if ([...Array(end - start + 1)].some((_, i) => taken.has(start + i))) continue;
-
-        // Belege Positionen
-        for (let i = start; i <= end; i++) taken.add(i);
-
-        found.push({ code: emote.code, url: emote.url, start, end });
-    }
+    emotes.forEach(e => {
+        const esc = escapeRegExp(e.code);
+        const rx = new RegExp(`(?<!\\S)${esc}(?!\\S)`, 'g');
+        let m;
+        while ((m = rx.exec(text)) != null) {
+            const s = m.index, end = s + e.code.length - 1;
+            if ([...Array(end-s+1)].some((_, i) => taken.has(s+i))) continue;
+            for (let i=s;i<=end;i++) taken.add(i);
+            found.push({ code: e.code, url: e.url, start: s, end });
+        }
     });
-
     return found;
 }
 
-function escapeRegExp(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// 7TV Style
 async function fetchSevenTvStyle(userId) {
-    // Wenn Cache existiert und nicht abgelaufen ist → verwende ihn
-    if (sevenTvCache.users[userId] && (Date.now() - sevenTvCache.users[userId].fetchedAt) < CACHE_TTL) {
-        return sevenTvCache.users[userId].data;
+    try {
+        const cache = sevenTvStyleCache.users[userId];
+        if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
+            return cache.data;
+        }
+        const res = await fetch(`https://7tv.io/v3/users/twitch/${userId}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        const style = data.user?.style ?? {};
+
+        let paintResult = null;
+        if (style.paint_id) {
+            paintResult = await fetchSevenTvPaint(style.paint_id);
+        }
+
+        let colorResult = null;
+        if (typeof style.color === 'number') {
+            colorResult = `#${(style.color >>> 0).toString(16).padStart(6, '0')}`;
+        }
+
+        let badgeResult = null;
+        if (style.badge_id) {
+            badgeResult = `https://cdn.7tv.app/badge/${style.badge_id}/3x`;
+        }
+
+        const result = { paint: paintResult, color: colorResult, badge: badgeResult };
+        sevenTvStyleCache.users[userId] = { data: result, fetchedAt: Date.now() };
+        return result;
+    } catch (err) {
+        console.warn('[7TV Style Fehler]', err);
+        return null;
     }
-
-    // Andernfalls: neuen Style von der 7TV API holen
-    const res = await fetch(`https://7tv.io/v3/users/twitch/${userId}`);
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const style = data.user?.style ?? {};
-
-    const result = { paint: null, color: null, badge: null };
-
-    // Paint laden, falls vorhanden
-    if (style.paint_id) {
-        result.paint = await fetchSevenTvPaint(style.paint_id);
-    }
-
-    // Farbe unabhängig von Paint setzen (auch wenn Paint existiert)
-    if (typeof style.color === "number") {
-        result.color = `#${(style.color >>> 0).toString(16).padStart(6, '0')}`;
-    }
-
-    // Badge, falls vorhanden
-    if (style.badge_id) {
-        result.badge = `https://cdn.7tv.app/badge/${style.badge_id}/3x`;
-    }
-
-    // Im Cache speichern mit Timestamp
-    sevenTvCache.users[userId] = {
-        data: result,
-        fetchedAt: Date.now()
-    };
-
-    return result;
 }
 
 async function fetchSevenTvPaint(paintId) {
-    const res = await fetch('https://7tv.io/v3/gql', {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            operationName: "GetPaint",
-            variables: { list: [String(paintId)] },
-                             query: `
-                             query GetPaint($list: [ObjectID!]) {
-                                 cosmetics(list: $list) {
-                                     paints {
-                                         id
-                                         name
-                                         color
-                                         function
-                                         angle
-                                         shape
-                                         image_url
-                                         repeat
-                                         stops { at color }
-                                         shadows { x_offset y_offset radius color }
+    try {
+        const res = await fetch('https://7tv.io/v3/gql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                operationName: 'GetPaint',
+                variables: { list: [String(paintId)] },
+                                 query: `
+                                 query GetPaint($list: [ObjectID!]) {
+                                     cosmetics(list: $list) {
+                                         paints { id name color function angle shape image_url repeat stops { at color } shadows { x_offset y_offset radius color } }
                                      }
                                  }
-                             }
-                             `
-        })
-    });
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    return data?.data?.cosmetics?.paints?.[0] ?? null;
+                                 `
+            })
+        });
+        if (!res.ok) return null;
+        const json = await res.json();
+        return json.data?.cosmetics?.paints?.[0] ?? null;
+    } catch (err) {
+        console.warn('[7TV Paint Fehler]', err);
+        return null;
+    }
 }

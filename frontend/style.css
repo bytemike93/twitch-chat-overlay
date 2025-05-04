@@ -1,3 +1,4 @@
+/* ====== Reset & Base ====== */
 html, body {
     margin: 0;
     padding: 0;
@@ -9,6 +10,8 @@ body {
     font-family: 'Roboto', sans-serif;
 }
 
+
+/* ====== Layout Wrappers ====== */
 #chat-wrapper {
 position: relative;
 height: 100%;
@@ -35,6 +38,8 @@ box-sizing: border-box;
 display: none;
 }
 
+
+/* ====== Chat Message ====== */
 .chat-message {
     font-size: inherit;
     padding: 14px 16px;
@@ -66,6 +71,19 @@ display: none;
     box-sizing: border-box;
 }
 
+.message-text {
+    font-size: 22px;
+    line-height: 1.5;
+    color: white;
+    margin-left: 0;
+    display: block;
+    text-shadow:
+    2px 2px 4px rgba(0, 0, 0, 0.9),
+    0 0 6px rgba(0, 0, 0, 0.5);
+}
+
+
+/* ====== Badges & Profile ====== */
 .profile-image {
     width: 54px;
     height: 54px;
@@ -90,23 +108,24 @@ display: none;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
 }
 
-.message-text {
-    font-size: 22px;
-    line-height: 1.5;
-    color: white;
-    margin-left: 0;
-    display: block;
-    width: 100%;
-    text-shadow:
-    2px 2px 4px rgba(0, 0, 0, 0.9),
-    0 0 6px rgba(0, 0, 0, 0.5);
-}
 
+/* ====== Emotes & Paints ====== */
 .twitch-emote,
 .seventv-emote {
     height: 2.6em;
     vertical-align: middle;
     margin: 0 0.12em;
+}
+
+.twitch-emote.solo-emote,
+.seventv-emote.solo-emote {
+    height: 3.2em !important;
+}
+
+.twitch-emote.inline-emote,
+.seventv-emote.inline-emote {
+    height: 1.2em !important;
+    vertical-align: text-bottom;
 }
 
 .seven-tv-paint {
@@ -121,17 +140,8 @@ display: none;
     background-size: 400% 400%;
 }
 
-.twitch-emote.solo-emote,
-.seventv-emote.solo-emote {
-    height: 3.2em !important;
-}
 
-.twitch-emote.inline-emote,
-.seventv-emote.inline-emote {
-    height: 1.2em !important;
-    vertical-align: text-bottom;
-}
-
+/* ====== Keyframes ====== */
 @keyframes animatedGradient {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
@@ -149,6 +159,15 @@ display: none;
     }
 }
 
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
+    15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    85% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+}
+
+
+/* ====== Intro Overlay ====== */
 #intro-wrapper {
 position: absolute;
 bottom: 5%;
@@ -174,26 +193,19 @@ width: 160px;
 height: auto;
 }
 
-#intro-text {
-font-size: 24px;
-font-weight: bold;
-color: white;
-text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
-}
-
+#intro-text,
 #intro-www {
 font-size: 24px;
 color: white;
 text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
 }
 
-@keyframes fadeInOut {
-    0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
-    15% { opacity: 1; transform: translateX(-50%) translateY(0); }
-    85% { opacity: 1; }
-    100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+#intro-text {
+font-weight: bold;
 }
 
+
+/* ====== Data Attributes (Compact / Styles) ====== */
 body[data-small="yes"] .chat-message {
     display: block;
     padding: 6px 10px;
@@ -238,3 +250,59 @@ body[data-small="yes"] .chatter-name {
     margin-left: 0 !important;
 }
 
+body[data-avatar="no"] .profile-image {
+    display: none;
+}
+
+body[data-align="right"] .chat-message,
+body[data-align="right"] .message-text {
+    text-align: right;
+}
+
+body[data-align="right"] #chat-container {
+    align-items: flex-end;
+}
+
+body[data-style="glass"] .chat-message {
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
+}
+
+body[data-style="neon"] .chat-message {
+    background-color: #000;
+    color: #0ff;
+    border: 2px solid #0ff;
+    box-shadow: 0 0 12px #0ff, 0 0 20px #f0f, 0 0 30px #0ff;
+    font-family: 'Orbitron', sans-serif;
+}
+
+body[data-style="cyberpunk"] .chat-message {
+    background: linear-gradient(to bottom right, rgba(255,0,255,0.3), rgba(0,255,255,0.3));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 20px rgba(255, 0, 255, 0.4);
+    font-family: 'Share Tech Mono', monospace;
+    color: #fff;
+}
+
+body[data-style="darkglass"] .chat-message {
+    background: linear-gradient(to bottom right, rgba(0,0,0,0.7), rgba(0,0,0,0.4));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    color: #fff;
+}
+
+body[data-style="no"] .chat-message {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    margin: 0;
+    padding: 0;
+}
