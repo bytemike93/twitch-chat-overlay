@@ -1,7 +1,13 @@
 # Changelog
 
+## [1.0.2-preview] – 2025-05-05
+### Changed
+- Added `?preview=yes` support for testing without intro animation
+- Loads dummy messages instead of live WebSocket data
+- Skips introWrapper animation in preview mode
+
 ## [1.0.2] – 2025-05-05
-### Fixed
+### Changed
 - Changed default message size to 24px
 - Removed gap between badges and chatter name
 

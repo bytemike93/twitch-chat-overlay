@@ -1,10 +1,17 @@
 const introWrapper = document.getElementById('intro-wrapper');
 const chatWrapper  = document.getElementById('chat-wrapper');
+const params = new URLSearchParams(window.location.search);
+const isPreview = params.get('preview') === 'yes';
 
-introWrapper.addEventListener('animationend', () => {
+if (isPreview) {
     introWrapper.style.display = 'none';
     startChat();
-});
+} else {
+    introWrapper.addEventListener('animationend', () => {
+        introWrapper.style.display = 'none';
+        startChat();
+    });
+}
 
 function startChat() {
 
@@ -49,14 +56,27 @@ function startChat() {
         });
     }
 
-    initWebSocket();
+    if (isPreview) {
+        const script = document.createElement('script');
+        script.src = 'dummy-messages.js'; // ggf. Pfad anpassen
+        script.onload = () => {
+            if (Array.isArray(window.DUMMY_MESSAGES)) {
+                window.DUMMY_MESSAGES.forEach(renderMessage);
+            }
+        };
+        script.onerror = () => {
+            console.error('Konnte Dummy-Nachrichten nicht laden.');
+        };
+        document.head.appendChild(script);
+    } else {
+        initWebSocket();
+    }
 
     chatWrapper.style.display = 'flex';
 
     const chatContainer = document.getElementById('chat-container');
     const wrapper = document.getElementById('chat-wrapper');
     const messageQueue = [];
-    const params = new URLSearchParams(window.location.search);
     const bgHex = params.get('bg');
     const styleParam = params.get('style');
     const isHex = hex => /^[0-9a-fA-F]{6}$/.test(hex);
