@@ -58,7 +58,7 @@ function startChat() {
 
     if (isPreview) {
         const script = document.createElement('script');
-        script.src = 'dummy-messages.js'; // ggf. Pfad anpassen
+        script.src = 'dummy-messages.js';
         script.onload = () => {
             if (Array.isArray(window.DUMMY_MESSAGES)) {
                 window.DUMMY_MESSAGES.forEach(renderMessage);
@@ -110,6 +110,7 @@ function startChat() {
         'muxybot',
         'soundalerts',
         'soundalerts_bot',
+        'apulxd',
         'cloudbot'
     ];
 

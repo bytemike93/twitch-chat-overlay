@@ -86,19 +86,98 @@ window.DUMMY_MESSAGES = [
     type: 'chat',
     username: 'emotesolo',
     displayName: 'SoloEmote',
-    message: 'Kappa',
+    message: 'Sure',
     badges: ['https://static-cdn.jtvnw.net/badges/v1/b817aba4-fad8-49e2-b88a-7cc744dfa6ec/3'],
     profileImageUrl: 'https://picsum.photos/id/1014/40/40',
     twitchEmotes: [
         {
-            code: 'Kappa',
-            url: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/3.0',
+            code: 'Sure',
+            url: 'https://cdn.7tv.app/emote/01GMTDJ83R000E68X75B8CJGAZ/4x.avif',
             start: 0,
             end: 4
         }
     ],
     sevenTvEmotes: [],
     sevenTvColor: '#ffffff',
+    sevenTvPaint: null
+},
+{
+    type: 'chat',
+    username: 'lurky',
+    displayName: 'Lurky',
+    message: 'Bin nur kurz da, viel Spaß euch!',
+    badges: [],
+    profileImageUrl: 'https://picsum.photos/id/1016/40/40',
+    twitchEmotes: [],
+    sevenTvEmotes: [],
+    sevenTvColor: '#999999',
+    sevenTvPaint: null
+},
+{
+    type: 'chat',
+    username: 'modkatze',
+    displayName: 'ModKatze',
+    message: '@gigauser nicht spammen pls 😅',
+    badges: ['https://static-cdn.jtvnw.net/badges/v1/3267646d-33f0-4b17-b3df-f923a41db1d0/3'],
+    profileImageUrl: 'https://picsum.photos/id/1019/40/40',
+    twitchEmotes: [],
+    sevenTvEmotes: [],
+    sevenTvColor: '#66ff66',
+    sevenTvPaint: null
+},
+{
+    type: 'chat',
+    username: 'emotestorm',
+    displayName: 'EmoteStorm',
+    message: 'BOOBA',
+    badges: [],
+    profileImageUrl: 'https://picsum.photos/id/1018/40/40',
+    twitchEmotes: [
+        {
+            code: 'BOOBA',
+            url: 'https://cdn.7tv.app/emote/01F6N31ETR0004P7N4A9PKS5X9/4x.avif',
+            start: 0,
+            end: 4
+        }
+    ],
+    sevenTvEmotes: [],
+    sevenTvColor: '#ff9900',
+    sevenTvPaint: null
+},
+{
+    type: 'chat',
+    username: 'paintfan',
+    displayName: 'PaintFan',
+    message: 'Ich liebe diese Farben!',
+    badges: [],
+    profileImageUrl: 'https://picsum.photos/id/1020/40/40',
+    twitchEmotes: [],
+    sevenTvEmotes: [],
+    sevenTvColor: '#ffffff',
+    sevenTvPaint: {
+        function: 'RADIAL_GRADIENT',
+        shape: 'circle',
+        repeat: false,
+        stops: [
+            { at: 0.0, color: 0xff66ccff },
+            { at: 0.5, color: 0x6600ccff },
+            { at: 1.0, color: 0x000000ff }
+        ],
+        shadows: [
+            { x_offset: 1, y_offset: 1, radius: 1, color: 0x000000ff }
+        ]
+    }
+},
+{
+    type: 'chat',
+    username: 'nightowl',
+    displayName: 'NightOwl',
+    message: 'Gute Nacht allerseits 💤',
+    badges: [],
+    profileImageUrl: 'https://picsum.photos/id/1021/40/40',
+    twitchEmotes: [],
+    sevenTvEmotes: [],
+    sevenTvColor: '#bbbbff',
     sevenTvPaint: null
 }
 ];
