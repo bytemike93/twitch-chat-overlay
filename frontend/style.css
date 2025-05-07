@@ -184,7 +184,7 @@ body[data-small="yes"] .chat-message {
 }
 
 body[data-small="yes"] .chatter-name {
-    margin-right: 8px;
+    margin-right: 10px;
 }
 
 body[data-small="yes"] .message-line {
@@ -216,7 +216,7 @@ body[data-small="yes"] .seventv-emote.solo-emote {
 }
 
 /* Zustand-basierte Regeln */
-.no-badge .chatter-name {
+body[data-small="yes"] .no-badge .chatter-name {
     margin-left: 0 !important;
 }
 
