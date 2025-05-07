@@ -1,4 +1,9 @@
-/* ====== Reset & Base ====== */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Rubik+Glitch&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
 html, body {
     margin: 0;
     padding: 0;
@@ -10,8 +15,7 @@ body {
     font-family: 'Roboto', sans-serif;
 }
 
-
-/* ====== Layout Wrappers ====== */
+/* Container */
 #chat-wrapper {
 position: relative;
 height: 100%;
@@ -38,8 +42,7 @@ box-sizing: border-box;
 display: none;
 }
 
-
-/* ====== Chat Message ====== */
+/* Nachricht */
 .chat-message {
     font-size: inherit;
     padding: 14px 16px;
@@ -71,19 +74,6 @@ display: none;
     box-sizing: border-box;
 }
 
-.message-text {
-    font-size: 24px;
-    line-height: 1.5;
-    color: white;
-    margin-left: 0;
-    display: block;
-    text-shadow:
-    2px 2px 4px rgba(0, 0, 0, 0.9),
-    0 0 6px rgba(0, 0, 0, 0.5);
-}
-
-
-/* ====== Badges & Profile ====== */
 .profile-image {
     width: 54px;
     height: 54px;
@@ -102,13 +92,26 @@ display: none;
 .chatter-name {
     font-weight: bold;
     color: inherit;
+    margin-left: 6px;
     font-size: 28px;
     line-height: 1.2;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+    word-break: break-word;
 }
 
+.message-text {
+    font-size: 22px;
+    line-height: 1.5;
+    color: white;
+    margin-left: 0;
+    display: block;
+    width: 100%;
+    text-shadow:
+    2px 2px 4px rgba(0, 0, 0, 0.9),
+    0 0 6px rgba(0, 0, 0, 0.5);
+}
 
-/* ====== Emotes & Paints ====== */
+/* Emotes */
 .twitch-emote,
 .seventv-emote {
     height: 2.6em;
@@ -127,6 +130,7 @@ display: none;
     vertical-align: text-bottom;
 }
 
+/* 7TV Paint */
 .seven-tv-paint {
     background-clip: text;
     -webkit-background-clip: text;
@@ -139,34 +143,7 @@ display: none;
     background-size: 400% 400%;
 }
 
-
-/* ====== Keyframes ====== */
-@keyframes animatedGradient {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
-@keyframes slideIn {
-    0% {
-        opacity: 0;
-        transform: scale(0.95) translateY(20px);
-    }
-    100% {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
-}
-
-@keyframes fadeInOut {
-    0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
-    15% { opacity: 1; transform: translateX(-50%) translateY(0); }
-    85% { opacity: 1; }
-    100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
-}
-
-
-/* ====== Intro Overlay ====== */
+/* Intro */
 #intro-wrapper {
 position: absolute;
 bottom: 5%;
@@ -195,21 +172,24 @@ height: auto;
 #intro-text,
 #intro-www {
 font-size: 24px;
+font-weight: bold;
 color: white;
 text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
 }
 
-#intro-text {
-font-weight: bold;
-}
-
-
-/* ====== Data Attributes (Compact / Styles) ====== */
+/* Small-Modus Basiseinstellungen */
 body[data-small="yes"] .chat-message {
     display: block;
-    padding: 6px 10px;
     width: 100%;
-    font-size: 24px;
+}
+
+body[data-small="yes"] .chatter-name {
+    margin-right: 8px;
+}
+
+body[data-small="yes"] .message-line {
+    display: block;
+    width: 100%;
 }
 
 body[data-small="yes"] .prefix {
@@ -230,21 +210,12 @@ body[data-small="yes"] .full-line {
     font-size: inherit;
 }
 
-body[data-small="yes"] .message-line {
-    display: block;
-    width: 100%;
-}
-
 body[data-small="yes"] .twitch-emote.solo-emote,
 body[data-small="yes"] .seventv-emote.solo-emote {
     margin-top: 0;
 }
 
-body[data-small="yes"] .chatter-name {
-    word-break: break-all;
-    margin-right: 8px;
-}
-
+/* Zustand-basierte Regeln */
 .no-badge .chatter-name {
     margin-left: 0 !important;
 }
@@ -262,6 +233,7 @@ body[data-align="right"] #chat-container {
     align-items: flex-end;
 }
 
+/* Style-Themes */
 body[data-style="glass"] .chat-message {
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
@@ -304,4 +276,55 @@ body[data-style="no"] .chat-message {
     -webkit-backdrop-filter: none;
     margin: 0;
     padding: 0;
+}
+
+/* Neue Stile */
+body[data-style="pixel"] .chat-message {
+    background-color: #000;
+    color: #0f0;
+    font-family: 'Press Start 2P', monospace;
+    border: 2px solid #0f0;
+    box-shadow: 0 0 10px #0f0;
+}
+
+body[data-style="glitch"] .chat-message {
+    background-color: #111;
+    color: #f0f;
+    font-family: 'Rubik Glitch', cursive;
+    text-shadow: 2px 2px #0ff;
+    border: 2px dashed #f0f;
+    box-shadow: 0 0 10px #f0f;
+}
+
+body[data-style="retro"] .chat-message {
+    background-color: #002b36;
+    color: #00ff00;
+    font-family: 'VT323', monospace;
+    border: 1px solid #00ff00;
+    box-shadow: 0 0 5px #00ff00;
+}
+
+/* Animationen */
+@keyframes animatedGradient {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes slideIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.95) translateY(20px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
+    15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    85% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
 }

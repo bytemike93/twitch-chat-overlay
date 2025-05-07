@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.0] – 2025-05-07
+### Added
+- Added Styles "Pixel", "Glitch" and "Retro"
+- Cleaned up style.css, added Google Fonts
+
 ## [1.0.2-preview] – 2025-05-05
 ### Changed
 - Added `?preview=yes` support for testing without intro animation
