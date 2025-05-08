@@ -122,6 +122,17 @@ function startChat() {
         document.body.setAttribute('data-align', 'right');
     }
 
+    const radius = params.get('rand');
+    if (radius && /^\d+$/.test(radius)) {
+        const style = document.createElement('style');
+        style.textContent = `
+        .chat-message {
+            border-radius: ${radius}px !important;
+        }
+        `;
+        document.head.appendChild(style);
+    }
+
     const bgNo = bgHex?.toLowerCase() === 'no';
     const useCustomBg = bgHex && isHex(bgHex);
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.1.1] – 2025-05-08
+### Added
+- Added URL parameter for border radius
+
 ## [1.1.0] – 2025-05-07
 ### Added
 - Added Styles "Pixel", "Glitch" and "Retro"
