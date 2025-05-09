@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.2] – 2025-05-09
+### Added
+- Added URL parameter for ignoring custom bots
+- Added sery_bot to known bots
+
 ## [1.1.1] – 2025-05-08
 ### Added
 - Added URL parameter for border radius

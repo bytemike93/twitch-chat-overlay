@@ -16,6 +16,38 @@ if (isPreview) {
 function startChat() {
 
     let ws;
+
+    const ignoreParam = params.get('ignore');
+    const userIgnoredBots = ignoreParam ? ignoreParam.split(',').map(b => b.toLowerCase()) : [];
+
+    const knownBots = [
+        'nightbot',
+        'streamelements',
+        'streamlabs',
+        'moobot',
+        'wizebot',
+        'fossabot',
+        'own3d',
+        'coebot',
+        'phantombot',
+        'deepbot',
+        'scorpbot',
+        'xanbot',
+        'anotherttvviewer',
+        'stay_hydrated_bot',
+        'supibot',
+        'vivbot',
+        'mixitupbot',
+        'muxybot',
+        'soundalerts',
+        'soundalerts_bot',
+        'apulxd',
+        'sery_bot',
+        'cloudbot'
+    ];
+
+    const hideBots = params.get('bots') === 'no';
+
     function initWebSocket() {
         ws = new WebSocket('wss://chatbackend.bytemike.de'); // ← Live
         // ws = new WebSocket('ws://localhost:3000'); // ← Staging
@@ -42,7 +74,8 @@ function startChat() {
             }
 
             if (message.type !== 'chat') return;
-            if (hideBots && knownBots.includes(message.username.toLowerCase())) return;
+            const sender = message.username.toLowerCase();
+            if (hideBots && (knownBots.includes(sender) || userIgnoredBots.includes(sender))) return;
             await renderMessage(message);
         });
 
@@ -88,31 +121,6 @@ function startChat() {
     }
     const showAvatarInSmall = params.get('avatar') === 'yes';
     const alignParam = params.get('align');
-    const hideBots = params.get('bots') === 'no';
-    const knownBots = [
-        'nightbot',
-        'streamelements',
-        'streamlabs',
-        'moobot',
-        'wizebot',
-        'fossabot',
-        'own3d',
-        'coebot',
-        'phantombot',
-        'deepbot',
-        'scorpbot',
-        'xanbot',
-        'anotherttvviewer',
-        'stay_hydrated_bot',
-        'supibot',
-        'vivbot',
-        'mixitupbot',
-        'muxybot',
-        'soundalerts',
-        'soundalerts_bot',
-        'apulxd',
-        'cloudbot'
-    ];
 
     if (!isSmallMode) {
         document.body.setAttribute("data-avatar", params.get('avatar') === 'no' ? 'no' : 'yes');
