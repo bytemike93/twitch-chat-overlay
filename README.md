@@ -2,6 +2,8 @@
 
 A modern, customizable Twitch chat overlay supporting emotes (Twitch + 7TV), paint styles, mentions, bot filtering, and more.
 
+➡️ Try the web-based overlay configurator: **[bytemike.de/chat-overlay](https://bytemike.de/chat-overlay)**
+
 ## Features
 
 - Twitch and 7TV emote support  
@@ -20,7 +22,7 @@ A modern, customizable Twitch chat overlay supporting emotes (Twitch + 7TV), pai
 Add the overlay URL as a **browser source** in OBS. Example:
 
 ```
-https://yourserver.tld/?streamer=yourname
+https://chat.bytemike.de/?streamer=yourname
 ```
 
 ## Parameters
@@ -38,11 +40,11 @@ https://yourserver.tld/?streamer=yourname
 | `avatar`      | Show profile pictures: `yes` or `no` (only applies when `small=yes`)        |
 | `bots`        | Hide bot messages: `no` (hides known bots)                                  |
 | `ignore`      | Custom bot names to ignore (comma-separated), e.g. `mybot,foobarbot`        |
-| `rand`        | Border radius in pixels, e.g. `6`                                           |
+| `border`      | Border radius in pixels, e.g. `6`                                           |
 | `preview`     | Show dummy messages: `yes` (for static preview in browser)                  |
 
 ## Example
 
 ```
-https://yourserver.tld?streamer=mychannel&style=glass&bg=000000&text=00ffcc&font=Orbitron&size=22&small=yes&avatar=yes&bots=no&rand=8
+https://chat.bytemike.de?streamer=mychannel&style=glass&bg=000000&text=00ffcc&font=Orbitron&size=22&small=yes&avatar=yes&bots=no&rand=8
 ```

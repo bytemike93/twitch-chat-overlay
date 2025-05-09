@@ -130,7 +130,7 @@ function startChat() {
         document.body.setAttribute('data-align', 'right');
     }
 
-    const radius = params.get('rand');
+    const radius = params.get('border');
     if (radius && /^\d+$/.test(radius)) {
         const style = document.createElement('style');
         style.textContent = `
