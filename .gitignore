@@ -1,3 +1,5 @@
 backend/twitch_token.json
 backend/config.secret.json
-old/
+backend/node_modules
+backend/ecosystem.config.js
+backend/package-lock.json
