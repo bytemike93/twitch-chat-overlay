@@ -1,0 +1,35 @@
+# Dependencies
+backend/node_modules/
+frontend/node_modules/
+
+# Builds / bundles / coverage
+backend/dist/
+frontend/dist/
+backend/coverage/
+frontend/coverage/
+
+# Environment / secrets
+backend/.env
+backend/*.secret.json
+backend/twitch_token.json
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+*.env.local
+*.env.*.local
+
+# Logs & temp
+logs/
+backend/logs/
+*.log
+*.pid
+tmp/
+*.tmp
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
