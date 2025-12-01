@@ -667,10 +667,10 @@ function startChat() {
     }
     el.classList.add('seven-tv-paint');
 
-    const wantAnim =
-      params.get('paintAnim') === 'yes' ||
-      (paint.function === 'URL' && /\.(gif|apng)$/i.test(paint.image_url || ''));
-    if (wantAnim) el.classList.add('animated');
+    // Overlay-Animation nur für statische Paints aktivieren; Paints auf Basis von Bildern unverändert lassen
+    const hasIntrinsicAnimation = paint.function === 'URL';
+    const overlayAnimationRequested = params.get('paintAnim') === 'yes';
+    if (overlayAnimationRequested && !hasIntrinsicAnimation) el.classList.add('animated');
   }
 
   async function renderMessage(message) {

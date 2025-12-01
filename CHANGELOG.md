@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.2] – 2025-11-01
+### Fixed
+- `paintAnim=yes` no longer adds an extra overlay animation to 7TV paints based on images (e.g., GIF/APNG). Intrinsically animated paints now render unchanged.
+
 ## [1.5.1] – 2025-10-31
 ### Changed
 - ignore= now works independently of bots=no. Your custom ignore list is always enforced, even when global bot filtering is off.
