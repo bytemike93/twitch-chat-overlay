@@ -166,6 +166,7 @@ const joinedChannels = new Set();
 const joinQueue = [];
 let joinTimer = null;
 const permanentJoinFailures = new Map();
+const joinRetryState = new Map();
 const PERMANENT_JOIN_ERRORS = [
   'msg_channel_suspended',
   'msg_room_not_found',
@@ -175,6 +176,11 @@ const PERMANENT_JOIN_ERRORS = [
   'msg_login_failed',
 ];
 const PERMANENT_JOIN_RESET_MS = 10 * 60 * 1000;
+const JOIN_BACKOFF_BASE_MS = 3000;
+const JOIN_BACKOFF_MAX_MS = 5 * 60 * 1000;
+const JOIN_MAX_RETRIES = 8;
+const JOIN_COOLDOWN_MS = 60 * 60 * 1000;
+const JOIN_LOG_THROTTLE_MS = 60 * 1000;
 
 function startJoinPump(intervalMs = 900) {
   if (joinTimer) return;
@@ -182,20 +188,46 @@ function startJoinPump(intervalMs = 900) {
     if (joinQueue.length === 0) { clearInterval(joinTimer); joinTimer = null; return; }
     const ch = joinQueue.shift();
     const streamer = ch.slice(1);
+    const now = Date.now();
+    const state = joinRetryState.get(streamer);
+    if (state) {
+      const nextAt = state.cooldownUntil || state.nextRetryAt;
+      if (nextAt && now < nextAt) {
+        const wait = Math.max(nextAt - now, 200);
+        setTimeout(() => enqueueJoin(streamer), wait);
+        return;
+      }
+    }
     try {
       await tmiClient.join(streamer);
       joinedChannels.add(ch);
+      joinRetryState.delete(streamer);
       permanentJoinFailures.delete(streamer);
       if (DEBUG_TMI) console.log('[tmi] joined', ch);
       broadcastJoinStatus(streamer, { status: 'joined' });
     } catch (e) {
       const message = e?.message || e;
-      console.warn('[tmi] join failed', ch, message);
       const permanentCode = classifyJoinError(message);
       if (permanentCode) {
+        joinRetryState.delete(streamer);
         recordPermanentJoinFailure(streamer, permanentCode, message);
       } else {
-        setTimeout(() => enqueueJoin(streamer), 3000);
+        const s = joinRetryState.get(streamer) || { failCount: 0, nextRetryAt: 0, cooldownUntil: 0, lastLogAt: 0 };
+        s.failCount += 1;
+        const delay = Math.min(JOIN_BACKOFF_BASE_MS * Math.pow(2, s.failCount - 1), JOIN_BACKOFF_MAX_MS);
+        s.nextRetryAt = Date.now() + delay;
+        if (s.failCount >= JOIN_MAX_RETRIES) {
+          s.failCount = 0;
+          s.cooldownUntil = Date.now() + JOIN_COOLDOWN_MS;
+          s.nextRetryAt = s.cooldownUntil;
+        }
+        const logNow = !s.lastLogAt || (Date.now() - s.lastLogAt) >= JOIN_LOG_THROTTLE_MS;
+        if (logNow) {
+          s.lastLogAt = Date.now();
+          console.warn('[tmi] join failed', ch, message);
+        }
+        joinRetryState.set(streamer, s);
+        setTimeout(() => enqueueJoin(streamer), Math.max(200, s.nextRetryAt - Date.now()));
       }
     }
   }, intervalMs);
