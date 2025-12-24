@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.5.3] – 2025-12-24
+### Fixed
+- Added exponential backoff with cooldown for join retries to avoid spam when channels are unavailable.
+- Throttled join failure logs to at most once per minute per channel.
+
 ## [1.5.2] – 2025-11-01
 ### Fixed
 - `paintAnim=yes` no longer adds an extra overlay animation to 7TV paints based on images (e.g., GIF/APNG). Intrinsically animated paints now render unchanged.
