@@ -152,6 +152,31 @@ let inflightChatterino = null;
 
 // ---- Overlay subscribers ----
 const channelSubscribers = new Map();
+const streamerActivity = new Map();
+
+function recordStreamerActivity(streamer, connected, subsCount) {
+  const now = new Date().toISOString();
+  let entry = streamerActivity.get(streamer);
+  if (!entry) {
+    entry = {
+      streamer,
+      first_seen_at: now,
+      last_seen_at: now,
+      last_connected_at: null,
+      last_disconnected_at: null,
+      connected: false,
+      subscribers: 0,
+    };
+  } else {
+    entry.last_seen_at = now;
+  }
+  if (connected && !entry.connected) entry.last_connected_at = now;
+  if (!connected && entry.connected) entry.last_disconnected_at = now;
+  entry.connected = connected;
+  entry.subscribers = subsCount;
+  streamerActivity.set(streamer, entry);
+}
+
 function broadcastToOverlay(channel, dataObj) {
   const streamer = channel.replace(/^#/, '').toLowerCase();
   const clients = channelSubscribers.get(streamer);
@@ -388,10 +413,19 @@ wss.on('connection', (ws, req) => {
     if (!/^[a-z0-9_]{3,25}$/.test(streamer)) return;
     if (!channelSubscribers.has(streamer)) channelSubscribers.set(streamer, new Set());
     channelSubscribers.get(streamer).add(ws);
+    recordStreamerActivity(streamer, true, channelSubscribers.get(streamer).size);
     ensureJoined(streamer);
   });
   ws.on('close', () => {
-    channelSubscribers.forEach((subs, streamer) => { if (subs.delete(ws) && subs.size === 0) maybePart(streamer); });
+    channelSubscribers.forEach((subs, streamer) => {
+      if (!subs.delete(ws)) return;
+      if (subs.size === 0) {
+        recordStreamerActivity(streamer, false, 0);
+        maybePart(streamer);
+      } else {
+        recordStreamerActivity(streamer, true, subs.size);
+      }
+    });
   });
   ws.on('error', () => {}); // stumm
 });
@@ -423,6 +457,7 @@ function getOverlayStats() {
     overlay_subscribers: subs,
     connected_streamers: Object.keys(channels).length,
     channels,
+    streamer_activity: Array.from(streamerActivity.values()),
     wanted_channels: wantedChannels.size,
     joined_channels: joinedChannels.size,
     join_queue: joinQueue.length,
@@ -470,8 +505,15 @@ app.get('/_admin/overlay', (req, res) => {
       work_queue: s.work_queue,
       workers_active: s.workers_active
     };
+    const activity = (s.streamer_activity || []).slice().sort((a, b) => {
+      if (a.connected !== b.connected) return a.connected ? -1 : 1;
+      const aSeen = a.last_seen_at || '';
+      const bSeen = b.last_seen_at || '';
+      return bSeen.localeCompare(aSeen);
+    });
     document.getElementById('root').innerHTML =
       '<pre>'+JSON.stringify(summary, null, 2)+'</pre>' +
+      '<h1>Connections</h1><pre>'+JSON.stringify(activity, null, 2)+'</pre>' +
       '<h1>By Channel</h1><pre>'+JSON.stringify(s.channels, null, 2)+'</pre>';
   }
   setInterval(poll, 2000);
