@@ -511,10 +511,18 @@ app.get('/_admin/overlay', (req, res) => {
       const bSeen = b.last_seen_at || '';
       return bSeen.localeCompare(aSeen);
     });
+    const channelsSorted = {};
+    for (const entry of activity) {
+      channelsSorted[entry.streamer] = entry.connected
+        ? (s.channels[entry.streamer] || 0)
+        : 0;
+    }
+    for (const [streamer, count] of Object.entries(s.channels || {})) {
+      if (!(streamer in channelsSorted)) channelsSorted[streamer] = count;
+    }
     document.getElementById('root').innerHTML =
       '<pre>'+JSON.stringify(summary, null, 2)+'</pre>' +
-      '<h1>Connections</h1><pre>'+JSON.stringify(activity, null, 2)+'</pre>' +
-      '<h1>By Channel</h1><pre>'+JSON.stringify(s.channels, null, 2)+'</pre>';
+      '<h1>By Channel</h1><pre>'+JSON.stringify(channelsSorted, null, 2)+'</pre>';
   }
   setInterval(poll, 2000);
   poll();
