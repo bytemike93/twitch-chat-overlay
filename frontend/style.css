@@ -2,8 +2,6 @@
    Chat Overlay – Clean Styles with CSS Variables
    Presets set defaults; URL params override vars.
    ---------------------------------------------- */
-@import "https://fonts.googleapis.com/css2?family=Orbitron&family=Share+Tech+Mono&family=Press+Start+2P&family=Rubik+Glitch&family=VT323&display=swap";
-
 /* ===== Variables (defaults) ===== */
 :root{
   --bubble-bg: rgba(0,0,0,0.5);

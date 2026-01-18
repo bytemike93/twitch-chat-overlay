@@ -5,6 +5,7 @@ try { require('dotenv').config(); } catch (_) {}
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const crypto = require('crypto');
 const express = require('express');
 const compression = require('compression');
 const WebSocket = require('ws');
@@ -69,6 +70,70 @@ async function fetchJsonRetry(url, { method='GET', headers={}, body, timeout=500
   throw lastErr;
 }
 
+const FONT_CACHE_DIR = path.join(__dirname, 'font-cache');
+const FONT_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
+const FONT_UA = 'Mozilla/5.0 (compatible; ByteMateFontProxy/1.0)';
+
+function sanitizeFontFamily(val) {
+  const raw = String(val || '').replace(/['"]/g, '').trim();
+  if (!raw || raw.length > 120) return null;
+  if (!/^[a-zA-Z0-9\s:+@;,.-]+$/.test(raw)) return null;
+  return raw;
+}
+
+function normalizeFamiliesParam(familyParam) {
+  const families = Array.isArray(familyParam) ? familyParam : [familyParam];
+  return families
+    .map(sanitizeFontFamily)
+    .filter(Boolean);
+}
+
+function sanitizeDisplay(val) {
+  const display = String(val || 'swap').toLowerCase();
+  return ['auto','block','swap','fallback','optional'].includes(display) ? display : 'swap';
+}
+
+function getFontCacheKey(families, display) {
+  return crypto.createHash('sha1').update(`${families.join('|')}|${display}`).digest('hex');
+}
+
+async function ensureFontCacheDir() {
+  await fs.promises.mkdir(FONT_CACHE_DIR, { recursive: true });
+}
+
+async function fetchGoogleFontsCss(families, display) {
+  const familyQuery = families
+    .map(f => `family=${encodeURIComponent(f).replace(/%20/g,'+')}`)
+    .join('&');
+  const url = `https://fonts.googleapis.com/css2?${familyQuery}&display=${encodeURIComponent(display)}`;
+  const res = await fetchWithTimeout(url, { headers: { 'User-Agent': FONT_UA }, timeout: 5000 });
+  if (!res.ok) throw new Error(`font css http ${res.status}`);
+  return await res.text();
+}
+
+async function cacheFontFiles(cssText) {
+  const urls = new Set();
+  for (const match of cssText.matchAll(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/g)) {
+    urls.add(match[1]);
+  }
+  let rewritten = cssText;
+  for (const url of urls) {
+    const pathname = new URL(url).pathname;
+    const ext = path.extname(pathname) || '.woff2';
+    const hash = crypto.createHash('sha1').update(url).digest('hex');
+    const filename = `${hash}${ext}`;
+    const filePath = path.join(FONT_CACHE_DIR, filename);
+    if (!fs.existsSync(filePath)) {
+      const resp = await fetchWithTimeout(url, { headers: { 'User-Agent': FONT_UA }, timeout: 5000 });
+      if (!resp.ok) throw new Error(`font file http ${resp.status}`);
+      const buf = Buffer.from(await resp.arrayBuffer());
+      await fs.promises.writeFile(filePath, buf);
+    }
+    rewritten = rewritten.split(url).join(`/fonts/file/${filename}`);
+  }
+  return rewritten;
+}
+
 // ---- Config ----
 const cfgPath = path.join(__dirname, 'config.secret.json');
 const cfg = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, 'utf8')) : {};
@@ -83,6 +148,53 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => 
 // ---- App + HTTP/WS ----
 const app = express();
 app.use(compression());
+app.get('/fonts/css', async (req, res) => {
+  const families = normalizeFamiliesParam(req.query.family);
+  if (!families.length) return res.status(400).send('missing family');
+
+  const display = sanitizeDisplay(req.query.display);
+  const cacheKey = getFontCacheKey(families, display);
+  const cssPath = path.join(FONT_CACHE_DIR, `${cacheKey}.css`);
+
+  try {
+    await ensureFontCacheDir();
+    if (fs.existsSync(cssPath)) {
+      const stat = fs.statSync(cssPath);
+      if (Date.now() - stat.mtimeMs < FONT_CACHE_TTL) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.type('text/css').send(fs.readFileSync(cssPath, 'utf8'));
+        return;
+      }
+    }
+
+    const cssText = await fetchGoogleFontsCss(families, display);
+    const rewritten = await cacheFontFiles(cssText);
+    await fs.promises.writeFile(cssPath, rewritten, 'utf8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.type('text/css').send(rewritten);
+  } catch (err) {
+    console.warn('Font proxy failed:', err?.message || err);
+    if (fs.existsSync(cssPath)) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.type('text/css').send(fs.readFileSync(cssPath, 'utf8'));
+      return;
+    }
+    res.status(502).send('font fetch failed');
+  }
+});
+
+app.get('/fonts/file/:file', (req, res) => {
+  const file = path.basename(req.params.file || '');
+  if (!file) return res.status(400).send('missing file');
+  const filePath = path.join(FONT_CACHE_DIR, file);
+  if (!fs.existsSync(filePath)) return res.status(404).send('not found');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.sendFile(filePath);
+});
+
 if (USE_LOCAL_FRONTEND) app.use(express.static(path.join(__dirname, '../frontend')));
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
 

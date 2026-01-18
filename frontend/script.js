@@ -21,6 +21,14 @@ function injectStyle(css){
 function escapeRegExp(str){ return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 const isSixHex  = (hex) => /^[0-9a-fA-F]{6}$/.test(hex || '');
 const hexToCss  = (hex) => `#${hex}`;
+const loadedFontFamilies = new Set();
+const STYLE_FONT_MAP = {
+  neon: 'Orbitron',
+  cyberpunk: 'Share Tech Mono',
+  pixel: 'Press Start 2P',
+  glitch: 'Rubik Glitch',
+  retro: 'VT323',
+};
 function hexToRgba(hex, alpha){
   const s = String(hex).replace(/^#/, '');
   const r = parseInt(s.slice(0,2),16);
@@ -38,6 +46,27 @@ function normalizeCssColor(val){
   if (/^[0-9a-f]{8}$/i.test(s)) return '#' + s.slice(2);
   if (/^[0-9a-f]{6}$/i.test(s)) return '#' + s;
   return null;
+}
+
+function computeFontBase() {
+  const host = location.hostname;
+  const proto = location.protocol === 'https:' ? 'https' : 'http';
+  if (location.protocol === 'file:' || host === 'localhost' || host === '127.0.0.1') {
+    return 'http://localhost:3010';
+  }
+  const m = host.match(/^chat(\..+)$/);
+  if (m) return `${proto}://chatbackend${m[1]}`;
+  return `${proto}://${location.host}`;
+}
+
+function loadLocalFont(family) {
+  const cleaned = String(family || '').replace(/['"]/g,'').trim();
+  if (!cleaned || loadedFontFamilies.has(cleaned)) return;
+  loadedFontFamilies.add(cleaned);
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = `${computeFontBase()}/fonts/css?family=${encodeURIComponent(cleaned).replace(/%20/g,'+')}&display=swap`;
+  document.head.appendChild(link);
 }
 
 injectStyle(`
@@ -194,8 +223,14 @@ function startChat() {
 
   // --- Preset / BG (per-bubble) ---
   const styleParam = params.get('style');
-  if (styleParam) document.body.setAttribute('data-style', styleParam);
-  else document.body.removeAttribute('data-style');
+  if (styleParam) {
+    document.body.setAttribute('data-style', styleParam);
+    const presetFont = STYLE_FONT_MAP[styleParam];
+    if (presetFont && !params.get('font')) loadLocalFont(presetFont);
+  } else {
+    document.body.removeAttribute('data-style');
+  }
+  if (!params.get('font') && !STYLE_FONT_MAP[styleParam || '']) loadLocalFont('Roboto');
 
   const bgParam = params.get('bg'); // "no" | 6HEX
   const bgNo = (bgParam?.toLowerCase() === 'no');
@@ -394,11 +429,7 @@ function startChat() {
     const raw = decodeURIComponent(fontParam).replace(/['"]/g,'').trim();
     const first = raw.split(',')[0].trim();
     const normalized = toTitleCase(first);
-    const family = encodeURIComponent(normalized).replace(/%20/g,'+');
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?family=${family}&display=swap`;
-    document.head.appendChild(link);
+    loadLocalFont(normalized);
     injectStyle(`
       .message-text{ font-family:'${normalized}',sans-serif!important; ${sizeParam ? `font-size:${parseInt(sizeParam,10)}px!important;` : ''} }
     `);

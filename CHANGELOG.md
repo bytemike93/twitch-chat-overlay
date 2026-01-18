@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.4] – 2026-01-18
+### Changed
+- Fonts are now loaded via the backend with local caching
+
 ## [1.5.3] – 2025-12-24
 ### Fixed
 - Added exponential backoff with cooldown for join retries to avoid spam when channels are unavailable.
