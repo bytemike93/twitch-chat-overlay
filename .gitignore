@@ -12,6 +12,11 @@ frontend/coverage/
 backend/.env
 backend/*.secret.json
 backend/twitch_token.json
+backend/chat_history.sqlite
+backend/chat_history.sqlite-wal
+backend/chat_history.sqlite-shm
+backend/*.sqlite
+backend/*.sqlite-*
 frontend/.env
 frontend/.env.local
 frontend/.env.*.local
