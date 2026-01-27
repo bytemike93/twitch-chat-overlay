@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.6.0] – 2026-01-25
+### Added
+- Chat history storage with SQLite and a public history endpoint for restoring recent messages.
+- Frontend history preload to restore chat after scene switches (configurable via URL params).
+
 ## [1.5.4] – 2026-01-18
 ### Changed
 - Fonts are now loaded via the backend with local caching

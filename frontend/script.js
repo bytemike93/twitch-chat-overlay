@@ -21,6 +21,11 @@ function injectStyle(css){
 function escapeRegExp(str){ return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 const isSixHex  = (hex) => /^[0-9a-fA-F]{6}$/.test(hex || '');
 const hexToCss  = (hex) => `#${hex}`;
+function clampInt(raw, min, max, fallback){
+  const num = Number(raw);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(num)));
+}
 const loadedFontFamilies = new Set();
 const STYLE_FONT_MAP = {
   neon: 'Orbitron',
@@ -112,7 +117,7 @@ function computeWsUrl() {
 }
 
 /* ---------- Start ---------- */
-function startChat() {
+async function startChat() {
   let ws;
   let __enterCounter = 0;
   let reconnectAllowed = true;
@@ -148,6 +153,7 @@ function startChat() {
   const userMessages = new Map();  // username -> Set<elements>
   const messageQueue = [];
   const pendingDeleteIds = new Set();
+  const seenMessageIds = new Set();
   const noPrune =
     params.get('flow') === 'yes' ||
     (params.get('prune') || '').toLowerCase() === 'off';
@@ -178,6 +184,8 @@ function startChat() {
       set.delete(el);
       if (set.size === 0) userMessages.delete(uname);
     }
+    const msgId = el.getAttribute('data-msgid');
+    if (msgId) seenMessageIds.delete(msgId);
 
     // sanft ausblenden + DOM entfernen
     if (el.parentNode === chatContainer) {
@@ -548,10 +556,11 @@ function startChat() {
           });
           userMessages.delete(key);
         }
-        return;
+       return;
       }
 
      if (message.type === 'clear_message_id' && message.id) {
+       seenMessageIds.delete(message.id);
        const el = chatContainer.querySelector(`[data-msgid="${message.id}"]`);
        if (el) {
          const idx = messageQueue.indexOf(el);
@@ -578,6 +587,7 @@ function startChat() {
        messageQueue.length = 0;
        userMessages.clear();
        pendingDeleteIds.clear();
+       seenMessageIds.clear();
        return;
      }
 
@@ -602,6 +612,29 @@ function startChat() {
     });
   }
 
+  async function loadHistory() {
+    const historyFlag = (params.get('history') || '').toLowerCase();
+    if (historyFlag === 'off' || isPreview) return;
+    const streamerParam = params.get('streamer');
+    const streamerName = streamerParam ? streamerParam.trim() : '';
+    if (!streamerName || !/^[a-zA-Z0-9_]{3,25}$/.test(streamerName)) return;
+
+    const limit = clampInt(params.get('historyLimit') || 80, 20, 200, 80);
+    const hours = clampInt(params.get('historyHours') || 6, 1, 24, 6);
+    const base = computeFontBase();
+    const url = `${base}/history?streamer=${encodeURIComponent(streamerName)}&limit=${limit}&hours=${hours}`;
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data || !Array.isArray(data.items)) return;
+      for (const item of data.items) {
+        if (item && 'sevenTvColor' in item) item.sevenTvColor = normalizeCssColor(item.sevenTvColor);
+        await renderMessage(item);
+      }
+    } catch {}
+  }
+
   if (isPreview) {
     const script = document.createElement('script');
     script.src = 'dummy-messages.js';
@@ -615,6 +648,7 @@ function startChat() {
     script.onerror = () => console.error('Konnte Dummy-Nachrichten nicht laden.');
     document.head.appendChild(script);
   } else {
+    await loadHistory();
     initWebSocket();
   }
 
@@ -712,6 +746,8 @@ function startChat() {
       pendingDeleteIds.delete(message.messageId);
       return;
     }    
+    if (message.messageId && seenMessageIds.has(message.messageId)) return;
+    if (message.messageId) seenMessageIds.add(message.messageId);
     const lowerUser = (message.username || '').toLowerCase();
     messageElement.setAttribute('data-username', lowerUser);
 

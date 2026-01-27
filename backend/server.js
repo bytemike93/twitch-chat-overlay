@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
+const Database = require('better-sqlite3');
 const express = require('express');
 const compression = require('compression');
 const WebSocket = require('ws');
@@ -145,9 +146,144 @@ const PORT = Number(process.env.PORT || 3010);
 const USE_LOCAL_FRONTEND = String(process.env.USE_LOCAL_FRONTEND || 'false').toLowerCase() === 'true';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
 
+function clampInt(raw, min, max, fallback) {
+  const num = Number(raw);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(num)));
+}
+
+const CHAT_HISTORY_DB = process.env.CHAT_HISTORY_DB || path.join(__dirname, 'chat_history.sqlite');
+const CHAT_HISTORY_HOURS = clampInt(process.env.CHAT_HISTORY_HOURS || 24, 1, 168, 24);
+const CHAT_HISTORY_LIMIT_DEFAULT = clampInt(process.env.CHAT_HISTORY_LIMIT_DEFAULT || 300, 50, 500, 300);
+const CHAT_HISTORY_LIMIT_MAX = clampInt(process.env.CHAT_HISTORY_LIMIT_MAX || 500, CHAT_HISTORY_LIMIT_DEFAULT, 1000, 500);
+const CHAT_HISTORY_CHANNELS = (process.env.CHAT_HISTORY_CHANNELS || '')
+  .split(',')
+  .map(s => s.trim().toLowerCase())
+  .filter(s => /^[a-z0-9_]{3,25}$/.test(s));
+const historyChannels = new Set(CHAT_HISTORY_CHANNELS);
+const CHAT_HISTORY_ALWAYS_JOIN = (process.env.CHAT_HISTORY_ALWAYS_JOIN || '')
+  .split(',')
+  .map(s => s.trim().toLowerCase())
+  .filter(s => /^[a-z0-9_]{3,25}$/.test(s));
+const alwaysJoinChannels = new Set(CHAT_HISTORY_ALWAYS_JOIN);
+
 // ---- App + HTTP/WS ----
 const app = express();
 app.use(compression());
+
+let historyDb = null;
+let historyEnabled = false;
+let stmtInsertMessage;
+let stmtDeleteById;
+let stmtDeleteByUser;
+let stmtDeleteByChannel;
+let stmtCleanup;
+let stmtSelectHistory;
+
+function setCorsHeaders(res, origin) {
+  if (!ALLOWED_ORIGINS.length) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return;
+  }
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+}
+
+function parseTimeMs(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const num = Number(raw);
+  if (!Number.isFinite(num)) return null;
+  return num < 1e12 ? Math.floor(num * 1000) : Math.floor(num);
+}
+
+function sanitizeStreamer(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  return /^[a-z0-9_]{3,25}$/.test(s) ? s : null;
+}
+
+function initHistoryDb() {
+  try {
+    historyDb = new Database(CHAT_HISTORY_DB);
+    historyDb.pragma('journal_mode = WAL');
+    historyDb.pragma('synchronous = NORMAL');
+    historyDb.exec(`
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        streamer TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        payload TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_message_id ON chat_messages(message_id);
+      CREATE INDEX IF NOT EXISTS idx_chat_streamer_time ON chat_messages(streamer, created_at);
+      CREATE INDEX IF NOT EXISTS idx_chat_streamer_user ON chat_messages(streamer, username);
+    `);
+    stmtInsertMessage = historyDb.prepare(
+      'INSERT OR IGNORE INTO chat_messages (streamer, message_id, username, created_at, payload) VALUES (?, ?, ?, ?, ?)'
+    );
+    stmtDeleteById = historyDb.prepare('DELETE FROM chat_messages WHERE message_id = ?');
+    stmtDeleteByUser = historyDb.prepare('DELETE FROM chat_messages WHERE streamer = ? AND username = ?');
+    stmtDeleteByChannel = historyDb.prepare('DELETE FROM chat_messages WHERE streamer = ?');
+    stmtCleanup = historyDb.prepare('DELETE FROM chat_messages WHERE created_at < ?');
+    stmtSelectHistory = historyDb.prepare(
+      'SELECT payload FROM chat_messages WHERE streamer = ? AND created_at >= ? AND created_at < ? ORDER BY created_at DESC LIMIT ?'
+    );
+    historyEnabled = true;
+  } catch (err) {
+    historyEnabled = false;
+    console.warn('[history] disabled:', err?.message || err);
+  }
+}
+
+function runHistoryCleanup() {
+  if (!historyEnabled) return;
+  const cutoff = Date.now() - CHAT_HISTORY_HOURS * 60 * 60 * 1000;
+  try { stmtCleanup.run(cutoff); } catch {}
+}
+
+function storeHistoryMessage(streamer, username, messageId, createdAt, payload) {
+  if (!historyEnabled || !messageId) return;
+  try { stmtInsertMessage.run(streamer, messageId, username || '', createdAt, JSON.stringify(payload)); } catch {}
+}
+
+function deleteHistoryById(messageId) {
+  if (!historyEnabled || !messageId) return;
+  try { stmtDeleteById.run(messageId); } catch {}
+}
+
+function deleteHistoryByUser(streamer, username) {
+  if (!historyEnabled || !streamer || !username) return;
+  try { stmtDeleteByUser.run(streamer, username); } catch {}
+}
+
+function deleteHistoryByChannel(streamer) {
+  if (!historyEnabled || !streamer) return;
+  try { stmtDeleteByChannel.run(streamer); } catch {}
+}
+
+function fetchHistory(streamer, { since, before, limit }) {
+  if (!historyEnabled) return [];
+  try {
+    const rows = stmtSelectHistory.all(streamer, since, before, limit);
+    const out = [];
+    for (const row of rows) {
+      try { out.push(JSON.parse(row.payload)); } catch {}
+    }
+    return out.reverse();
+  } catch {
+    return [];
+  }
+}
+
+initHistoryDb();
+if (historyEnabled) {
+  runHistoryCleanup();
+  const timer = setInterval(runHistoryCleanup, 10 * 60 * 1000);
+  if (typeof timer.unref === 'function') timer.unref();
+}
 app.get('/fonts/css', async (req, res) => {
   const families = normalizeFamiliesParam(req.query.family);
   if (!families.length) return res.status(400).send('missing family');
@@ -197,6 +333,25 @@ app.get('/fonts/file/:file', (req, res) => {
 
 if (USE_LOCAL_FRONTEND) app.use(express.static(path.join(__dirname, '../frontend')));
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+app.get('/history', (req, res) => {
+  setCorsHeaders(res, req.headers.origin);
+  res.setHeader('Cache-Control', 'no-store');
+  if (!historyEnabled) return res.status(503).json({ ok: false, error: 'history_disabled' });
+
+  const streamer = sanitizeStreamer(req.query.streamer);
+  if (!streamer) return res.status(400).json({ ok: false, error: 'invalid_streamer' });
+
+  const now = Date.now();
+  const hours = clampInt(req.query.hours ?? CHAT_HISTORY_HOURS, 1, CHAT_HISTORY_HOURS, CHAT_HISTORY_HOURS);
+  const limit = clampInt(req.query.limit ?? CHAT_HISTORY_LIMIT_DEFAULT, 1, CHAT_HISTORY_LIMIT_MAX, CHAT_HISTORY_LIMIT_DEFAULT);
+  const sinceParam = parseTimeMs(req.query.since);
+  const beforeParam = parseTimeMs(req.query.before);
+  const since = sinceParam ?? (now - hours * 60 * 60 * 1000);
+  const before = beforeParam ?? (now + 1);
+
+  const items = fetchHistory(streamer, { since, before, limit });
+  return res.json({ ok: true, streamer, items });
+});
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -389,6 +544,7 @@ function ensureJoined(streamer) {
 }
 async function maybePart(streamer) {
   const s = String(streamer).trim().toLowerCase();
+  if (alwaysJoinChannels.has(s)) return;
   const ch = `#${s}`;
   const subs = channelSubscribers.get(s);
   if (subs && subs.size > 0) return;
@@ -477,6 +633,7 @@ if (DEBUG_TMI) {
 tmiClient.on('reconnect', () => reconnects++);
 tmiClient.on('connected', (addr, port) => {
   console.log(`[tmi] connected @ ${addr}:${port}`);
+  alwaysJoinChannels.forEach((s) => wantedChannels.add(s));
   for (const s of wantedChannels) {
     if (permanentJoinFailures.has(s)) {
       const failure = permanentJoinFailures.get(s);
@@ -494,14 +651,23 @@ tmiClient.on('disconnected', (reason) => {
 tmiClient.on('pong', (lat) => { if (lat > 4000) console.warn('[tmi] high latency:', lat, 'ms'); });
 
 ['timeout', 'ban'].forEach(evt =>
-  tmiClient.on(evt, (channel, username) =>
-    broadcastToOverlay(channel, { type: 'clear_user_messages', username: (username || '').toLowerCase() })
-  )
+  tmiClient.on(evt, (channel, username) => {
+    const name = (username || '').toLowerCase();
+    const streamer = channel.replace(/^#/, '').toLowerCase();
+    deleteHistoryByUser(streamer, name);
+    broadcastToOverlay(channel, { type: 'clear_user_messages', username: name });
+  })
 );
-tmiClient.on('clearchat', (channel) => broadcastToOverlay(channel, { type: 'clear_all' }));
+tmiClient.on('clearchat', (channel) => {
+  const streamer = channel.replace(/^#/, '').toLowerCase();
+  deleteHistoryByChannel(streamer);
+  broadcastToOverlay(channel, { type: 'clear_all' });
+});
 tmiClient.on('messagedeleted', (channel, username, _m, userstate) => {
   const name = (userstate?.login || userstate?.username || username || '').toLowerCase();
   const id = userstate?.['target-msg-id'];
+  if (id) deleteHistoryById(id);
+  else if (name) deleteHistoryByUser(channel.replace(/^#/, '').toLowerCase(), name);
   if (id) broadcastToOverlay(channel, { type: 'clear_message_id', id, username: name });
   else if (name) broadcastToOverlay(channel, { type: 'clear_user_messages', username: name });
 });
@@ -677,11 +843,14 @@ function enqueueChannelWork(channel, task) {
 async function handleIncomingMessage(channel, tags, text) {
   const lowerCh = channel.slice(1).toLowerCase();
   const subs = channelSubscribers.get(lowerCh);
-  if (!subs || subs.size === 0) return;
+  const hasSubs = subs && subs.size > 0;
+  const shouldStore = historyEnabled && (!historyChannels.size || historyChannels.has(lowerCh));
+  if (!hasSubs && !shouldStore) return;
 
   const messageText = typeof text === 'string' ? text : String(text ?? '');
 
   const uid = tags['user-id'];
+  const messageId = tags['id'];
   const login = (tags['login'] || tags['username'] || '').toLowerCase();
   let profileImageUrl = await getTwitchUserProfile({ uid, login });
 
@@ -740,7 +909,7 @@ async function handleIncomingMessage(channel, tags, text) {
     username: tags.username,
     displayName: tags['display-name'],
     message: messageText,
-    messageId: tags['id'],
+    messageId,
     badges: badgeUrls,
     profileImageUrl,
     twitchEmotes: twEmotes,
@@ -752,8 +921,11 @@ async function handleIncomingMessage(channel, tags, text) {
     sevenTvPaint: sevenStyle?.paint || null
   };
 
-  const payload = JSON.stringify(msgData);
-  subs.forEach(s => { try { if (s.readyState === WebSocket.OPEN) s.send(payload); } catch {} });
+  storeHistoryMessage(lowerCh, login, messageId, Date.now(), msgData);
+  if (hasSubs) {
+    const payload = JSON.stringify(msgData);
+    subs.forEach(s => { try { if (s.readyState === WebSocket.OPEN) s.send(payload); } catch {} });
+  }
 }
 
 // ---- Badges / 7TV helpers ----
