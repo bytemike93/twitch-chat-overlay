@@ -31,6 +31,9 @@ backend/logs/
 tmp/
 *.tmp
 
+# Cache
+backend/font-cache/
+
 # OS / editor junk
 .DS_Store
 Thumbs.db
