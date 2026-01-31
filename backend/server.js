@@ -181,6 +181,11 @@ let stmtCleanup;
 let stmtSelectHistory;
 
 function setCorsHeaders(res, origin) {
+  console.log('[CORS DEBUG] ALLOWED_ORIGINS:', ALLOWED_ORIGINS);
+  console.log('[CORS DEBUG] Request Origin:', origin);
+  console.log('[CORS DEBUG] ALLOWED_ORIGINS.length:', ALLOWED_ORIGINS.length);
+  console.log('[CORS DEBUG] includes check:', ALLOWED_ORIGINS.includes(origin));
+
   if (!ALLOWED_ORIGINS.length) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     return;
