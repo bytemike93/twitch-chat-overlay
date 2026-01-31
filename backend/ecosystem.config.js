@@ -8,7 +8,7 @@ module.exports = {
       USE_LOCAL_FRONTEND: String(process.env.USE_LOCAL_FRONTEND ?? "false"),
       TWITCH_CLIENT_ID: process.env.TWITCH_CLIENT_ID,
       TWITCH_CLIENT_SECRET: process.env.TWITCH_CLIENT_SECRET,
-      ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || "https://chat.bytemike.de",
+      ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || "https://chat.bytemike.de,https://bytemate.me",
       OVERLAY_ADMIN_SECRET: process.env.OVERLAY_ADMIN_SECRET
     },
     merge_logs: true,
